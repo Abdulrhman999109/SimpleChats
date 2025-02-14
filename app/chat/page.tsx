@@ -1,102 +1,107 @@
 "use client";
 
-import ChatForm from "../components/Chat/ChatForm";
-import ChatMessage from "../components/Chat/ChatMessage";
 import { useEffect, useState } from "react";
-import { socket } from "../../lib/sicketClient";
+import ChatForm from "../components//Chat/ChatForm";
+import ChatMessage from "../components/Chat/ChatMessage";
 
 export default function ChatPage() {
   const [room, setRoom] = useState("");
-  const [joined, setJoined] = useState(false);
-  const [message, setMessage] = useState<{ sender: string; message: string }[]>([]);
   const [userName, setUserName] = useState("");
+  const [joined, setJoined] = useState(false);
   const [users, setUsers] = useState<string[]>([]);
-
-  const handleSubmit = (message: string) => {
-    const data = { room, message, sender: userName };
-    setMessage((prev) => [...prev, { sender: userName, message }]);
-    socket.emit("message", data);
-  };
+  const [messages, setMessages] = useState<{ sender: string; message: string }[]>([]);
 
   useEffect(() => {
-    socket.on("message", (data) => {
-      setMessage((prev) => [...prev, data]);
-    });
+    if (joined) {
+      const eventSource = new EventSource(`/api/server?room=${room}`);
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        setUsers(data.users);
+        setMessages(data.messages);
+      };
 
-    socket.on("user_joined", (message) => {
-      setMessage((prev) => [...prev, { sender: "system", message }]);
-    });
-
-    socket.on("user_list", (userList) => {
-      setUsers(userList);
-    });
-
-    socket.on("error", (errorMessage) => {
-      alert(errorMessage);
-    });
-
-    return () => {
-      socket.off("user_joined");
-      socket.off("message");
-      socket.off("user_list");
-      socket.off("error");
-    };
-  }, []);
-
-  const handleJoinRoom = () => {
-    if (!userName || !room) {
-      alert("Please enter both username and room.");
-      return;
+      return () => eventSource.close();
     }
-    socket.emit("join-room", { room, username: userName });
-    setJoined(true);
+  }, [joined]);
+
+  const joinRoom = async () => {
+    const response = await fetch("/api/server", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "join",
+        data: { room, username: userName },
+      }),
+    });
+
+    if (response.ok) {
+      setJoined(true);
+      setMessages((prev) => [
+        ...prev,
+        { sender: "system", message: `${userName} has joined the room.` },
+      ]);
+    }
+  };
+
+  const sendMessage = async (message: string) => {
+    await fetch("/api/server", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "message",
+        data: { room, username: userName, message },
+      }),
+    });
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
+    <div className="flex flex-col items-center min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-gray-50">
       {!joined ? (
-        <div className="flex flex-col items-center space-y-6 bg-yellow-50 p-8 rounded-lg shadow-lg w-full max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900">Enter Username & Room</h2>
-          <div className="space-y-4 w-full">
-            <input
-              type="text"
-              placeholder="Username"
-              className="p-2 w-full border border-gray-300 rounded focus:outline-none focus:ring focus:ring-yellow-200 text-black"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-            />
-            <input
-              type="text"
-              placeholder="Room Number"
-              className="p-2 w-full border border-gray-300 rounded focus:outline-none focus:ring focus:ring-yellow-200 text-black"
-              value={room}
-              onChange={(e) => setRoom(e.target.value)}
-            />
-          </div>
+        <div className="flex flex-col space-y-4 bg-gray-800 p-8 rounded-lg shadow-2xl">
+          <h2 className="text-3xl font-bold text-yellow-300 mb-4">Join a Room</h2>
+          <input
+            type="text"
+            placeholder="Room"
+            value={room}
+            onChange={(e) => setRoom(e.target.value)}
+            className="w-full p-3 border border-gray-600 rounded bg-gray-700 text-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+          />
+          <input
+            type="text"
+            placeholder="Username"
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
+            className="w-full p-3 border border-gray-600 rounded bg-gray-700 text-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+          />
           <button
-            onClick={handleJoinRoom}
-            className="px-6 py-2 bg-yellow-300 text-gray-900 rounded-md hover:bg-yellow-400 transition-all"
+            onClick={joinRoom}
+            className="w-full p-3 bg-yellow-400 text-gray-900 rounded font-bold hover:bg-yellow-500 transition-all shadow-md"
           >
-            Join Room
+            Join
           </button>
         </div>
       ) : (
-        <div className="w-full max-w-4xl bg-gray-800 p-6 rounded-lg shadow-lg">
-          <h1 className="mb-4 text-3xl font-bold text-yellow-300">Room: {room}</h1>
-          <div className="mb-4">
-            <h3 className="font-bold text-yellow-200">Users in Room:</h3>
-            <ul className="list-disc ml-6 text-gray-300">
-              {users.map((user, index) => (
-                <li key={index}>{user}</li>
+        <div className="w-full max-w-3xl flex flex-col space-y-6">
+          <h1 className="text-4xl font-extrabold text-yellow-300 text-center">Room: {room}</h1>
+          <div className="p-6 bg-gray-800 rounded shadow-md">
+            <h2 className="text-2xl font-bold text-yellow-300">Users in Room:</h2>
+            <ul className="mt-4 space-y-2">
+              {users.map((user, idx) => (
+                <li key={idx} className="text-lg text-gray-200 bg-gray-700 p-2 rounded">{user}</li>
               ))}
             </ul>
           </div>
-          <div className="h-[500px] overflow-y-auto p-4 mb-4 bg-gray-700 border border-gray-600 rounded-lg">
-            {message.map((msg, index) => (
-              <ChatMessage key={index} sender={msg.sender} message={msg.message} isOwnMessage={msg.sender === userName} />
+          <div className="p-6 bg-gray-800 rounded shadow-md h-64 overflow-y-auto">
+            {messages.map((msg, idx) => (
+              <ChatMessage
+                key={idx}
+                sender={msg.sender}
+                message={msg.message}
+                isOwnMessage={msg.sender === userName}
+              />
             ))}
           </div>
-          <ChatForm onSendMessage={handleSubmit} />
+          <ChatForm onSendMessage={sendMessage} />
         </div>
       )}
     </div>

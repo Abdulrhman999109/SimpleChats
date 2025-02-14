@@ -6,7 +6,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
-        <title>ChatSphere</title>
+        <title>QuickChats</title>
         <meta name="description" content="A real-time chat application" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         

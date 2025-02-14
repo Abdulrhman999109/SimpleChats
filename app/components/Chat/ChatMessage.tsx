@@ -1,36 +1,22 @@
-import React from 'react'
-
-interface ChatMessageProps{
+interface ChatMessageProps {
   sender: string;
-  message:string;
-  isOwnMessage:boolean;
-  
+  message: string;
+  isOwnMessage: boolean;
 }
 
-const ChatMessage = ({sender , message , isOwnMessage } : ChatMessageProps) => {
-  const isSystemMessage = sender === "system";
+export default function ChatMessage({ sender, message, isOwnMessage }: ChatMessageProps) {
   return (
-    <div className={`flex ${
-      isSystemMessage? "justify-center" : isOwnMessage ? "justify-end":"justify-start"} mb-3`}
+    <div
+      className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} mb-2`}
     >
-
-
-
-
-      <div className={`max-w-xs px-4 py-2 rounded-lg ${isSystemMessage ? "bg-gray-800 text-white text-center text-xs" : isOwnMessage ? "bg-blue-500 text-white" : "bg-white text-black"}`}>
-
-
-
-
-
-
-        {!isSystemMessage && <p className="text-sm font-bold">{sender}</p>}
-        <p>{message}</p>
+      <div
+        className={`max-w-xs p-3 rounded-lg shadow-md text-sm text-gray-50 ${
+          isOwnMessage ? "bg-yellow-500 text-gray-900" : "bg-gray-700"
+        }`}
+      >
+        <span className="block font-bold mb-1">{sender}</span>
+        <span>{message}</span>
       </div>
-
     </div>
-  )
+  );
 }
-
-export default ChatMessage
-

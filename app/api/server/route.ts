@@ -1,62 +1,77 @@
-import { Server as SocketServer } from "socket.io";
-import { Server as HTTPServer } from "node:http";
+import { NextResponse } from "next/server";
 
-const rooms: Record<string, { id: string; username: string }[]> = {};
+const users: Record<string, string[]> = {};
+const messages: Record<string, { sender: string; message: string }[]> = {};
 
-const httpServer = new HTTPServer();
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const room = searchParams.get("room");
 
-const io = new SocketServer(httpServer, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
-
-io.on("connection", (socket) => {
-  console.log(`A user connected: ${socket.id}`);
-
-  socket.on("join-room", ({ room, username }) => {
-    if (!room || !username) {
-      socket.emit("error", "Room and username are required.");
-      return;
-    }
-
-    if (!rooms[room]) rooms[room] = [];
-    rooms[room].push({ id: socket.id, username });
-
-    socket.join(room);
-    io.to(room).emit("user_list", rooms[room].map((user) => user.username));
-    socket.to(room).emit("user_joined", `${username} joined the room`);
-  });
-
-  socket.on("message", ({ message, room, sender }) => {
-    if (!message.trim()) {
-      socket.emit("error", "Message cannot be empty.");
-      return;
-    }
-    io.to(room).emit("message", { sender, message });
-  });
-
-  socket.on("disconnect", () => {
-    for (const room in rooms) {
-      rooms[room] = rooms[room].filter((user) => user.id !== socket.id);
-      io.to(room).emit("user_list", rooms[room].map((user) => user.username));
-    }
-    console.log(`User disconnected: ${socket.id}`);
-  });
-});
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-export default function handler(req: any, res: any) {
-  if (!res.socket.server.io) {
-    console.log("Starting Socket.IO server...");
-    res.socket.server.io = io;
-    httpServer.listen(3000);
+  if (!room) {
+    return NextResponse.json({ error: "Room not provided" }, { status: 400 });
   }
-  res.end();
+
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      let isClosed = false;
+
+      const interval = setInterval(() => {
+        if (isClosed) return;
+
+        try {
+          const data = JSON.stringify({
+            users: users[room] || [],
+            messages: messages[room] || [],
+          });
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        } catch {
+          clearInterval(interval);
+          controller.close();
+        }
+      }, 1000);
+
+      controller.close = () => {
+        isClosed = true;
+        clearInterval(interval);
+      };
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+export async function POST(req: Request) {
+  const { action, data } = await req.json();
+  const { room, username, message } = data;
+
+  if (action === "join") {
+    if (!room || !username) {
+      return NextResponse.json({ error: "Invalid data" }, { status: 400 });
+    }
+
+    users[room] = users[room] || [];
+    if (!users[room].includes(username)) users[room].push(username);
+
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === "message") {
+    if (!room || !username || !message) {
+      return NextResponse.json({ error: "Invalid data" }, { status: 400 });
+    }
+
+    messages[room] = messages[room] || [];
+    messages[room].push({ sender: username, message });
+
+    return NextResponse.json({ success: true });
+  }
+
+  return NextResponse.json({ error: "Invalid action" }, { status: 400 });
 }

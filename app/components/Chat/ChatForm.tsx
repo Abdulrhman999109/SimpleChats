@@ -1,37 +1,32 @@
-"use client";
-import React, { useState } from "react";
-
-export default function ChatForm({
-  onSendMessage,
-}: {
+'use client'
+import { useState } from "react";
+interface ChatFormProps {
   onSendMessage: (message: string) => void;
-}) {
+}
+
+export default function ChatForm({ onSendMessage }: ChatFormProps) {
   const [message, setMessage] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim() !== "") {
+    if (message.trim()) {
       onSendMessage(message);
       setMessage("");
     }
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex items-center space-x-4 bg-gray-800 p-4 rounded-lg shadow-md"
-    >
+    <form onSubmit={handleSubmit} className="flex space-x-2">
       <input
         type="text"
-        className="flex-1 px-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring focus:ring-yellow-300 bg-gray-700 text-gray-200"
         placeholder="Type your message..."
         value={message}
         onChange={(e) => setMessage(e.target.value)}
+        className="flex-grow p-3 border border-gray-600 rounded-l bg-gray-700 text-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
       />
-
       <button
         type="submit"
-        className="px-6 py-2 bg-yellow-300 text-gray-900 font-bold rounded-lg shadow hover:bg-yellow-400 transition-all focus:ring focus:ring-yellow-300"
+        className="p-3 bg-yellow-400 text-gray-900 rounded-r font-bold hover:bg-yellow-500 transition-all shadow-md"
       >
         Send
       </button>
