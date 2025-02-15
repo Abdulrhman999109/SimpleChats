@@ -1,35 +1,49 @@
-'use client'
-import { useState } from "react";
-interface ChatFormProps {
-  onSendMessage: (message: string) => void;
-}
+"use client";
 
-export default function ChatForm({ onSendMessage }: ChatFormProps) {
+import React, { useState } from "react";
+import supabase from "../../supabaseClient";
+
+const ChatForm = ({
+  userId,
+  setMessages,
+}: {
+  userId: string;
+  setMessages: React.Dispatch<React.SetStateAction<any[]>>;
+}) => {
   const [message, setMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (message.trim()) {
-      onSendMessage(message);
-      setMessage("");
+  const sendMessage = async () => {
+    if (!message.trim()) return;
+
+    const { error } = await supabase
+      .from("messages")
+      .insert([{ content: message, user_id: userId }]);
+
+    if (error) {
+      console.error("Error sending message:", error);
+      return;
     }
+
+    setMessage("");
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex space-x-2">
+    <div className="mt-4">
       <input
         type="text"
-        placeholder="Type your message..."
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        className="flex-grow p-3 border border-gray-600 rounded-l bg-gray-700 text-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+        placeholder="Type your message..."
+        className="w-full p-3 text-black border border-gray-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-yellow-300"
       />
       <button
-        type="submit"
-        className="p-3 bg-yellow-400 text-gray-900 rounded-r font-bold hover:bg-yellow-500 transition-all shadow-md"
+        onClick={sendMessage}
+        className="w-full bg-gray-900 text-yellow-50 py-3 rounded-lg font-bold hover:bg-gray-800 transition-all"
       >
         Send
       </button>
-    </form>
+    </div>
   );
-}
+};
+
+export default ChatForm;

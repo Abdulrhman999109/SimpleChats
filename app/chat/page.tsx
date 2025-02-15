@@ -1,109 +1,158 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import ChatForm from "../components//Chat/ChatForm";
+import React, { useEffect, useState } from "react";
+import supabase from "../supabaseClient";
+import ChatForm from "../components/Chat/ChatForm";
 import ChatMessage from "../components/Chat/ChatMessage";
 
-export default function ChatPage() {
-  const [room, setRoom] = useState("");
-  const [userName, setUserName] = useState("");
-  const [joined, setJoined] = useState(false);
-  const [users, setUsers] = useState<string[]>([]);
-  const [messages, setMessages] = useState<{ sender: string; message: string }[]>([]);
+interface Message {
+  id: number;
+  content: string;
+  created_at: string;
+  users: {
+    username: string;
+  };
+}
+
+const ChatPage = () => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [userId, setUserId] = useState<string>("");
 
   useEffect(() => {
-    if (joined) {
-      const eventSource = new EventSource(`/api/server?room=${room}`);
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        setUsers(data.users);
-        setMessages(data.messages);
-      };
+    const createUser = async () => {
+      const storedUserId = localStorage.getItem("userId");
+      if (storedUserId) {
+        setUserId(storedUserId);
+        return;
+      }
 
-      return () => eventSource.close();
+      const username = prompt("Enter your username:");
+      if (!username) return;
+
+      const { data: existingUser, error: fetchError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("username", username)
+        .single();
+
+      if (fetchError && fetchError.code !== "PGRST116") {
+        console.error("Error fetching user:", fetchError);
+        return;
+      }
+
+      if (existingUser) {
+        alert(`Welcome back, ${existingUser.username}!`);
+        setUserId(existingUser.id);
+        localStorage.setItem("userId", existingUser.id);
+      } else {
+        const { data: newUser, error: insertError } = await supabase
+          .from("users")
+          .insert([{ username }])
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error("Error creating user:", insertError);
+          return;
+        }
+
+        alert(`Welcome, ${newUser.username}!`);
+        setUserId(newUser.id);
+        localStorage.setItem("userId", newUser.id);
+      }
+    };
+
+    createUser();
+  }, []);
+
+  useEffect(() => {
+    fetchMessages();
+
+    const subscription = supabase
+      .channel("messages")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        async (payload: { new: any }) => {
+          const newMessage = payload.new;
+
+          const isDuplicate = messages.some((msg) => msg.id === newMessage.id);
+          if (isDuplicate) return;
+
+          const { data: userData, error } = await supabase
+            .from("users")
+            .select("username")
+            .eq("id", newMessage.user_id)
+            .single();
+
+          if (error) {
+            console.error("Error fetching user for new message:", error);
+            return;
+          }
+
+          const formattedMessage = {
+            id: newMessage.id,
+            content: newMessage.content,
+            created_at: newMessage.created_at,
+            users: {
+              username: userData?.username || "Unknown User",
+            },
+          };
+
+          setMessages((prevMessages) => [...prevMessages, formattedMessage]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, []);
+
+  const fetchMessages = async () => {
+    const { data, error } = await supabase
+      .from("messages")
+      .select(`
+        id,
+        content,
+        created_at,
+        users (
+          username
+        )
+      `)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching messages:", error);
+      return;
     }
-  }, [joined]);
 
-  const joinRoom = async () => {
-    const response = await fetch("/api/server", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "join",
-        data: { room, username: userName },
-      }),
-    });
-
-    if (response.ok) {
-      setJoined(true);
-      setMessages((prev) => [
-        ...prev,
-        { sender: "system", message: `${userName} has joined the room.` },
-      ]);
+    if (data) {
+      const formattedMessages = data.map((msg) => ({
+        id: msg.id,
+        content: msg.content,
+        created_at: msg.created_at,
+        users: Array.isArray(msg.users) ? msg.users[0] : msg.users,
+      }));
+      setMessages(formattedMessages as Message[]);
     }
-  };
-
-  const sendMessage = async (message: string) => {
-    await fetch("/api/server", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "message",
-        data: { room, username: userName, message },
-      }),
-    });
   };
 
   return (
-    <div className="flex flex-col items-center min-h-screen bg-gradient-to-b from-gray-800 to-gray-900 text-gray-50">
-      {!joined ? (
-        <div className="flex flex-col space-y-4 bg-gray-800 p-8 rounded-lg shadow-2xl">
-          <h2 className="text-3xl font-bold text-yellow-300 mb-4">Join a Room</h2>
-          <input
-            type="text"
-            placeholder="Room"
-            value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            className="w-full p-3 border border-gray-600 rounded bg-gray-700 text-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-          />
-          <input
-            type="text"
-            placeholder="Username"
-            value={userName}
-            onChange={(e) => setUserName(e.target.value)}
-            className="w-full p-3 border border-gray-600 rounded bg-gray-700 text-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-          />
-          <button
-            onClick={joinRoom}
-            className="w-full p-3 bg-yellow-400 text-gray-900 rounded font-bold hover:bg-yellow-500 transition-all shadow-md"
-          >
-            Join
-          </button>
+    <div className="min-h-screen bg-yellow-50 flex flex-col items-center p-6">
+      <h1 className="text-4xl font-bold text-gray-900 mb-6">Chat Room</h1>
+      <div className="w-full max-w-3xl bg-white rounded-lg shadow-md p-4 mb-4">
+        <div className="messages-container max-h-96 overflow-y-auto">
+          {messages.map((msg) => (
+            <ChatMessage key={msg.id} message={msg} />
+          ))}
         </div>
-      ) : (
-        <div className="w-full max-w-3xl flex flex-col space-y-6">
-          <h1 className="text-4xl font-extrabold text-yellow-300 text-center">Room: {room}</h1>
-          <div className="p-6 bg-gray-800 rounded shadow-md">
-            <h2 className="text-2xl font-bold text-yellow-300">Users in Room:</h2>
-            <ul className="mt-4 space-y-2">
-              {users.map((user, idx) => (
-                <li key={idx} className="text-lg text-gray-200 bg-gray-700 p-2 rounded">{user}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="p-6 bg-gray-800 rounded shadow-md h-64 overflow-y-auto">
-            {messages.map((msg, idx) => (
-              <ChatMessage
-                key={idx}
-                sender={msg.sender}
-                message={msg.message}
-                isOwnMessage={msg.sender === userName}
-              />
-            ))}
-          </div>
-          <ChatForm onSendMessage={sendMessage} />
-        </div>
-      )}
+      </div>
+      <div className="w-full max-w-3xl">
+        <ChatForm userId={userId} setMessages={setMessages} />
+      </div>
     </div>
   );
-}
+};
+
+export default ChatPage;
